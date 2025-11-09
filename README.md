@@ -49,7 +49,7 @@ Manage your Minecraft server without SSH commands. Control your server and insta
 
 2. **Download this:**
 ```bash
-git clone https://github.com/rbxpusk/minecraft-server-manager.git
+git clone https://github.com/rbxpusk/minecraft.git
 cd minecraft-server-manager
 pip install -r requirements.txt
 ```
