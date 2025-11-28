@@ -50,6 +50,7 @@ class DashboardTab:
             ("⏹️ Stop Server", self.stop_server, 'error'),
             ("🔄 Restart", self.restart_server, 'warning'),
             ("🔍 Check Status", self.check_status, 'primary'),
+            ("💥 Analyze Crash", self.analyze_crash, 'error'),
             ("📦 Install Server", self.install_server, 'warning'),
             ("📊 Performance", self.show_performance, 'primary'),
         ]
@@ -69,7 +70,7 @@ class DashboardTab:
         console_card.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         
         self.console = scrolledtext.ScrolledText(
-            console_card, wrap=tk.WORD, height=20,
+            console_card, wrap=tk.WORD, height=15,
             bg='#0a0e14', fg='#00ff00',
             font=('Consolas', 10), relief='flat',
             insertbackground='#00ff00'
@@ -255,6 +256,101 @@ class DashboardTab:
         
         threading.Thread(target=check, daemon=True).start()
     
+    def analyze_crash(self):
+        """Analyze the latest crash report"""
+        if not self.app.ssh:
+            messagebox.showerror("Error", "Not connected to server")
+            return
+        
+        def analyze():
+            try:
+                self.log("💥 Analyzing crash reports...")
+                
+                from crash_analyzer import CrashAnalyzer
+                analyzer = CrashAnalyzer(self.app.ssh)
+                
+                # Get Java version
+                java_ver = analyzer.get_java_version()
+                self.log(f"Java version: {java_ver}")
+                
+                # List recent crashes first
+                recent_crashes = analyzer.list_recent_crashes()
+                self.log("Recent crash reports:")
+                self.log(recent_crashes)
+                
+                # Get latest crash
+                crash_file, crash_content, timestamp = analyzer.get_latest_crash()
+                
+                if not crash_file:
+                    self.log("✅ No crash reports found - server hasn't crashed!")
+                    messagebox.showinfo("No Crashes", "No crash reports found.\n\nYour server hasn't crashed!")
+                    return
+                
+                self.log(f"📄 Latest crash: {crash_file}")
+                self.log(f"🕐 Timestamp: {timestamp}")
+                
+                # Analyze crash
+                diagnosis = analyzer.analyze_crash(crash_content)
+                
+                # Show in dialog
+                dialog = tk.Toplevel(self.frame)
+                dialog.title("Crash Analysis")
+                dialog.geometry("800x600")
+                dialog.configure(bg=ModernTheme.DARK['bg'])
+                
+                # Title
+                title_frame = tk.Frame(dialog, bg=ModernTheme.DARK['surface'])
+                title_frame.pack(fill=tk.X, padx=20, pady=20)
+                
+                tk.Label(title_frame, text="💥 Crash Report Analysis",
+                        font=('Segoe UI', 16, 'bold'),
+                        bg=ModernTheme.DARK['surface'],
+                        fg=ModernTheme.DARK['error']).pack()
+                
+                tk.Label(title_frame, text=f"File: {crash_file.split('/')[-1]}",
+                        font=('Segoe UI', 9),
+                        bg=ModernTheme.DARK['surface'],
+                        fg=ModernTheme.DARK['text_secondary']).pack()
+                
+                tk.Label(title_frame, text=f"Time: {timestamp}",
+                        font=('Segoe UI', 9),
+                        bg=ModernTheme.DARK['surface'],
+                        fg=ModernTheme.DARK['text_secondary']).pack()
+                
+                # Diagnosis
+                text_frame = tk.Frame(dialog, bg=ModernTheme.DARK['bg'])
+                text_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 20))
+                
+                text = tk.Text(text_frame, wrap=tk.WORD,
+                              bg=ModernTheme.DARK['surface'],
+                              fg=ModernTheme.DARK['text'],
+                              font=('Consolas', 10))
+                text.pack(fill=tk.BOTH, expand=True)
+                
+                text.insert('1.0', diagnosis)
+                text.insert(tk.END, "\n\n" + "="*80 + "\n")
+                text.insert(tk.END, "FULL CRASH REPORT:\n")
+                text.insert(tk.END, "="*80 + "\n\n")
+                text.insert(tk.END, crash_content)
+                text.config(state=tk.DISABLED)
+                
+                # Buttons
+                btn_frame = tk.Frame(dialog, bg=ModernTheme.DARK['bg'])
+                btn_frame.pack(fill=tk.X, padx=20, pady=(0, 20))
+                
+                tk.Button(btn_frame, text="Close", command=dialog.destroy,
+                         bg=ModernTheme.DARK['surface_light'], fg=ModernTheme.DARK['text'],
+                         font=('Segoe UI', 10), relief='flat',
+                         padx=20, pady=10, cursor='hand2').pack(side=tk.RIGHT)
+                
+                self.log("✅ Crash analysis complete")
+                
+            except Exception as e:
+                self.log(f"❌ Error analyzing crash: {e}")
+                messagebox.showerror("Error", f"Failed to analyze crash:\n{e}")
+        
+        threading.Thread(target=analyze, daemon=True).start()
+    
     def install_server(self):
         from dialogs.install_dialog import InstallDialog
         InstallDialog(self.frame, self.app)
@@ -282,7 +378,7 @@ class DashboardTab:
         if self.auto_refresh and self.app.files:
             def refresh():
                 try:
-                    logs = self.app.files.get_logs(50)
+                    logs = self.app.files.get_logs(200)
                     # Only show new logs
                     current = self.console.get(1.0, tk.END)
                     if logs not in current:

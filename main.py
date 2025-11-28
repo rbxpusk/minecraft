@@ -55,6 +55,15 @@ class MinecraftServerManager:
                         fg=ModernTheme.DARK['accent'])
         title.pack(side=tk.LEFT)
         
+        # Show credentials button
+        self.creds_btn = tk.Button(content, text="🔑 Credentials",
+                            command=self.show_credentials,
+                            bg=ModernTheme.DARK['warning'], fg='white',
+                            font=('Segoe UI', 10, 'bold'), relief='flat',
+                            padx=15, pady=8, cursor='hand2', borderwidth=0,
+                            state=tk.DISABLED)
+        self.creds_btn.pack(side=tk.RIGHT, padx=5)
+        
         # Logout button
         self.logout_btn = tk.Button(content, text="🚪 Logout",
                             command=self.logout,
@@ -93,16 +102,19 @@ class MinecraftServerManager:
         from tabs.players_tab import PlayersTab
         from tabs.files_tab import FilesTab
         from tabs.settings_tab import SettingsTab
+        from tabs.map_tab import MapTab
         
         self.dashboard = DashboardTab(self.notebook, self)
         self.mods_tab = ModsTab(self.notebook, self)
         self.players_tab = PlayersTab(self.notebook, self)
+        self.map_tab = MapTab(self.notebook, self)
         self.files_tab = FilesTab(self.notebook, self)
         self.settings_tab = SettingsTab(self.notebook, self)
         
         self.notebook.add(self.dashboard.frame, text="🎮 Dashboard")
         self.notebook.add(self.mods_tab.frame, text="🔧 Mods")
         self.notebook.add(self.players_tab.frame, text="👥 Players")
+        self.notebook.add(self.map_tab.frame, text="🗺️ Map")
         self.notebook.add(self.files_tab.frame, text="📁 Files")
         self.notebook.add(self.settings_tab.frame, text="⚙️ Settings")
         
@@ -175,6 +187,120 @@ class MinecraftServerManager:
         from dialogs.tutorial_dialog import TutorialDialog
         TutorialDialog(self.root, self)
     
+    def show_credentials(self):
+        """Show current session credentials"""
+        if not self.ssh:
+            return
+        
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Session Credentials")
+        dialog.geometry("600x500")
+        dialog.configure(bg=ModernTheme.DARK['bg'])
+        dialog.transient(self.root)
+        dialog.resizable(True, True)  # Make it resizable!
+        
+        # Header
+        header = tk.Frame(dialog, bg=ModernTheme.DARK['surface'])
+        header.pack(fill=tk.X, padx=20, pady=20)
+        
+        tk.Label(header, text="🔑 Current Session",
+                font=('Segoe UI', 16, 'bold'),
+                bg=ModernTheme.DARK['surface'],
+                fg=ModernTheme.DARK['accent']).pack()
+        
+        tk.Label(header, text="⚠️ Keep these credentials secure!",
+                font=('Segoe UI', 9),
+                bg=ModernTheme.DARK['surface'],
+                fg=ModernTheme.DARK['warning']).pack(pady=(5, 0))
+        
+        # Credentials
+        creds_frame = tk.Frame(dialog, bg=ModernTheme.DARK['bg'])
+        creds_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 20))
+        
+        credentials = [
+            ("Hostname", self.ssh.hostname),
+            ("Port", str(self.ssh.port)),
+            ("Username", self.ssh.username),
+            ("Password", self.ssh.password)
+        ]
+        
+        for label, value in credentials:
+            # Label
+            tk.Label(creds_frame, text=f"{label}:",
+                    font=('Segoe UI', 10, 'bold'),
+                    bg=ModernTheme.DARK['bg'],
+                    fg=ModernTheme.DARK['text']).pack(anchor='w', pady=(10, 2))
+            
+            # Value frame with copy button
+            value_frame = tk.Frame(creds_frame, bg=ModernTheme.DARK['surface_light'],
+                                  highlightthickness=1, highlightbackground=ModernTheme.DARK['border'])
+            value_frame.pack(fill=tk.X, pady=(0, 5))
+            
+            # Show password as dots initially
+            if label == "Password":
+                if value:
+                    display_value = "●" * len(value)
+                    print(f"Password length: {len(value)}")  # Debug
+                else:
+                    display_value = "[No password stored]"
+                    print("Password is empty!")  # Debug
+            else:
+                display_value = value
+            
+            value_label = tk.Label(value_frame, text=display_value,
+                                  font=('Consolas', 11, 'bold'),
+                                  bg=ModernTheme.DARK['surface_light'],
+                                  fg='#00ff00',  # Bright green so it's visible
+                                  anchor='w')
+            value_label.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=10, pady=10)
+            
+            # Show/Hide button for password (add BEFORE copy button)
+            if label == "Password":
+                # Create button first
+                toggle_btn = tk.Button(value_frame, text="👁️ Show",
+                                      bg=ModernTheme.DARK['info'], fg='white',
+                                      font=('Segoe UI', 9, 'bold'), relief='flat',
+                                      padx=10, pady=5, cursor='hand2', borderwidth=0)
+                toggle_btn.pack(side=tk.RIGHT, padx=5)
+                
+                # Then define the toggle function
+                def make_toggle(lbl, val, btn):
+                    def toggle():
+                        current = lbl.cget('text')
+                        if '●' in current or '[No password]' in current:
+                            lbl.config(text=val if val else "[Empty]")
+                            btn.config(text="👁️ Hide")
+                        else:
+                            lbl.config(text="●" * len(val) if val else "[No password]")
+                            btn.config(text="👁️ Show")
+                    return toggle
+                
+                toggle_btn.config(command=make_toggle(value_label, value, toggle_btn))
+            
+            # Copy button
+            def copy_to_clipboard(text=value, lbl=value_label):
+                self.root.clipboard_clear()
+                self.root.clipboard_append(text)
+                original = lbl.cget('text')
+                lbl.config(text="✅ Copied!", fg=ModernTheme.DARK['success'])
+                self.root.after(2000, lambda: lbl.config(text=original, fg=ModernTheme.DARK['text']))
+            
+            tk.Button(value_frame, text="📋 Copy",
+                     command=copy_to_clipboard,
+                     bg=ModernTheme.DARK['accent'], fg='white',
+                     font=('Segoe UI', 9, 'bold'), relief='flat',
+                     padx=10, pady=5, cursor='hand2', borderwidth=0).pack(side=tk.RIGHT, padx=5)
+        
+        # Close button
+        btn_frame = tk.Frame(dialog, bg=ModernTheme.DARK['bg'])
+        btn_frame.pack(fill=tk.X, padx=20, pady=(0, 20))
+        
+        tk.Button(btn_frame, text="Close",
+                 command=dialog.destroy,
+                 bg=ModernTheme.DARK['surface_light'], fg=ModernTheme.DARK['text'],
+                 font=('Segoe UI', 11), relief='flat',
+                 padx=30, pady=10, cursor='hand2', borderwidth=0).pack()
+    
     def connect(self, hostname, username, password, port=22):
         try:
             self.ssh = SSHManager(hostname, username, password, port)
@@ -188,6 +314,7 @@ class MinecraftServerManager:
             self.status_indicator.config(text="● Connected", 
                                         fg=ModernTheme.DARK['success'])
             self.logout_btn.config(state=tk.NORMAL)
+            self.creds_btn.config(state=tk.NORMAL)
             
             # Save credentials if enabled
             if self.prefs.get('remember_credentials', False):
@@ -222,6 +349,7 @@ class MinecraftServerManager:
             self.server_status.config(text="Server: Unknown",
                                      fg=ModernTheme.DARK['text_secondary'])
             self.logout_btn.config(state=tk.DISABLED)
+            self.creds_btn.config(state=tk.DISABLED)
             
             # Clear dashboard
             if hasattr(self, 'dashboard'):

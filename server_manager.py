@@ -33,16 +33,19 @@ class ServerManager:
         return self.start()
     
     def get_status(self):
-        output, _ = self.ssh.execute("ps aux | grep 'java.*server.jar' | grep -v grep")
+        # Check for any Java process running Minecraft/Forge
+        output, _ = self.ssh.execute("ps aux | grep 'java.*forge\\|java.*minecraft\\|java.*server.jar' | grep -v grep")
         
         if output.strip():
             server_type = "Forge" if "forge" in output.lower() else "Vanilla"
             if "fabric" in output.lower():
                 server_type = "Fabric"
+            elif "paper" in output.lower():
+                server_type = "Paper"
             return {"running": True, "type": server_type}
         
-        forge_check, _ = self.ssh.execute(f"ls {self.mc_dir}/server.jar 2>&1")
-        installed = "server.jar" in forge_check
+        forge_check, _ = self.ssh.execute(f"ls {self.mc_dir}/*.jar 2>&1")
+        installed = ".jar" in forge_check
         
         return {"running": False, "installed": installed}
     

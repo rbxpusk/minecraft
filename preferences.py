@@ -26,7 +26,7 @@ class Preferences:
             'auto_fetch': True,
             'refresh_interval': 5,
             'show_tutorial': True,
-            'console_lines': 100,
+            'console_lines': 500,
             'default_memory': '4G',
             'local_mods_path': '',
             'backup_path': '',

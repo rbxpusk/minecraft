@@ -23,6 +23,7 @@ class FilesTab:
             ("🗑️ Clear Logs", self.clear_logs, 'warning'),
             ("💾 Backup World", self.backup_world, 'success'),
             ("📋 List Backups", self.list_backups, 'primary'),
+            ("🌍 Export World", self.export_world, 'success'),
         ]
         
         for text, cmd, style in buttons:
@@ -137,3 +138,113 @@ class FilesTab:
                 self.app.log(f"❌ Error: {e}")
         
         threading.Thread(target=list_bkp, daemon=True).start()
+
+    def export_world(self):
+        """Export complete world with all data to local machine"""
+        if not self.app.ssh:
+            messagebox.showerror("Error", "Not connected to server")
+            return
+        
+        # Ask where to save
+        save_path = filedialog.askdirectory(title="Select folder to save world export")
+        if not save_path:
+            return
+        
+        def export():
+            try:
+                self.app.log("🌍 Starting world export...")
+                self.app.log("⚠️ This may take several minutes for large worlds!")
+                
+                # Create timestamp for export
+                import time
+                timestamp = time.strftime("%Y%m%d_%H%M%S")
+                export_name = f"world_export_{timestamp}"
+                
+                # Create temporary archive on server
+                self.app.log("📦 Creating archive on server...")
+                archive_cmd = (
+                    f"cd ~/minecraft && "
+                    f"tar -czf /tmp/{export_name}.tar.gz "
+                    f"--exclude='world*/session.lock' "  # Exclude lock files
+                    f"world*/playerdata "  # Player data (inventories, positions)
+                    f"world*/stats "  # Player statistics
+                    f"world*/advancements "  # Player advancements
+                    f"world*/data "  # World data (maps, structures)
+                    f"world*/region "  # World chunks
+                    f"world*/DIM-1 "  # Nether
+                    f"world*/DIM1 "  # End
+                    f"world*/level.dat "  # World info
+                    f"world*/level.dat_old "
+                    f"server.properties "
+                    f"ops.json "
+                    f"whitelist.json "
+                    f"banned-players.json "
+                    f"banned-ips.json "
+                    f"usercache.json "
+                    f"2>&1"
+                )
+                
+                output, _ = self.app.ssh.execute(archive_cmd)
+                self.app.log(f"Archive output: {output[:200]}")
+                
+                # Check archive size
+                size_output, _ = self.app.ssh.execute(f"du -h /tmp/{export_name}.tar.gz")
+                size = size_output.split()[0] if size_output else "Unknown"
+                self.app.log(f"📊 Archive size: {size}")
+                
+                # Download using SFTP
+                self.app.log("📥 Downloading to local machine...")
+                self.app.log("⏳ Please wait, this may take a while...")
+                
+                import paramiko
+                sftp = self.app.ssh.client.open_sftp()
+                
+                local_file = f"{save_path}/{export_name}.tar.gz"
+                remote_file = f"/tmp/{export_name}.tar.gz"
+                
+                # Download with progress
+                def progress_callback(transferred, total):
+                    percent = (transferred / total) * 100 if total > 0 else 0
+                    if int(percent) % 10 == 0:  # Log every 10%
+                        self.app.log(f"📥 Downloaded: {percent:.0f}%")
+                
+                sftp.get(remote_file, local_file, callback=progress_callback)
+                sftp.close()
+                
+                # Clean up server
+                self.app.log("🧹 Cleaning up server...")
+                self.app.ssh.execute(f"rm -f /tmp/{export_name}.tar.gz")
+                
+                # Extract locally
+                self.app.log("📂 Extracting archive...")
+                import tarfile
+                with tarfile.open(local_file, 'r:gz') as tar:
+                    tar.extractall(f"{save_path}/{export_name}")
+                
+                # Delete archive after extraction
+                import os
+                os.remove(local_file)
+                
+                self.app.log(f"✅ World exported successfully!")
+                self.app.log(f"📁 Location: {save_path}/{export_name}")
+                
+                messagebox.showinfo("Export Complete",
+                    f"World exported successfully!\n\n"
+                    f"Location: {save_path}/{export_name}\n\n"
+                    f"Contents:\n"
+                    f"• All world chunks (region files)\n"
+                    f"• Player data (inventories, positions, health)\n"
+                    f"• Player stats and advancements\n"
+                    f"• World data (maps, structures)\n"
+                    f"• Nether and End dimensions\n"
+                    f"• server.properties\n"
+                    f"• Ops, whitelist, bans\n\n"
+                    f"Your player 'puskevi' data is included!")
+                
+            except Exception as e:
+                self.app.log(f"❌ Export failed: {e}")
+                messagebox.showerror("Export Failed", 
+                    f"Failed to export world:\n{e}\n\n"
+                    f"Make sure you have enough disk space and permissions.")
+        
+        threading.Thread(target=export, daemon=True).start()
